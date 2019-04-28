@@ -82,7 +82,9 @@ final class Library {
             String osName = os.getMinecraftName();
             if(!natives.containsKey(osName))
                 osName = Platform.wrapName(osName);
-            result = result.append('-').append(natives.get(osName));
+            if(natives.containsKey(osName)) {
+                result = result.append('-').append(natives.get(osName));
+            }
         }
         result = result.append(".jar");
         return libraryPathSubstitutor.substitute(result.toString());
