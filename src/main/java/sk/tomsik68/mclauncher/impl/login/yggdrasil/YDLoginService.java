@@ -22,9 +22,9 @@ import sk.tomsik68.mclauncher.util.HttpUtils;
 
 public final class YDLoginService implements ILoginService {
     public static UUID clientToken = UUID.randomUUID();
-    private static final String PASSWORD_LOGIN_URL = "https://authserver.mojang.com/authenticate";
-    private static final String SESSION_LOGIN_URL = "https://authserver.mojang.com/refresh";
-    private static final String SESSION_LOGOUT_URL = "https://authserver.mojang.com/invalidate";
+    private static final String PASSWORD_LOGIN_URL = "https://minecraft.glitchless.ru/api/minecraft/users/authenticate/";
+    private static final String SESSION_LOGIN_URL = "https://minecraft.glitchless.ru/api/minecraft/users/refresh";
+    private static final String SESSION_LOGOUT_URL = "https://minecraft.glitchless.ru/api/minecraft/users/invalidate";
 
     public YDLoginService() {
     }
@@ -60,9 +60,11 @@ public final class YDLoginService implements ILoginService {
 
     private String doLoginPost(String url, IJSONSerializable request) throws YDServiceAuthenticationException {
         String response = null;
+        MCLauncherAPI.log.info(">>>>>>>>>>>>>" + url + "\n" + request.toJSON().toJSONString());
         try {
             // Automatically Throws YDServiceAuthenticationException but will check for IOException and convert
             response = HttpUtils.doJSONAuthenticationPost(url, request);
+            MCLauncherAPI.log.info("<<<<<<<<<<<" + response);
             return response;
         } catch (IOException e) {
             throw new YDServiceAuthenticationException("Failed to authenticate using Mojang authentication service.", e);
