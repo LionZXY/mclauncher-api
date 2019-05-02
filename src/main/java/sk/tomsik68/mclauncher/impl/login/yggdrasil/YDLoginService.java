@@ -22,7 +22,7 @@ import sk.tomsik68.mclauncher.util.HttpUtils;
 
 public final class YDLoginService implements ILoginService {
     public static UUID clientToken = UUID.randomUUID();
-    private static final String PASSWORD_LOGIN_URL = "https://games.glitchless.ru/api/minecraft/users/authenticate/";
+    private static final String PASSWORD_LOGIN_URL = "https://games.glitchless.ru/api/minecraft/users/authenticate";
     private static final String SESSION_LOGIN_URL = "https://games.glitchless.ru/api/minecraft/users/refresh";
     private static final String SESSION_LOGOUT_URL = "https://games.glitchless.ru/api/minecraft/users/invalidate";
 
