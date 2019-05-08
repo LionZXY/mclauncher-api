@@ -80,7 +80,7 @@ public final class YDLoginService implements ILoginService {
         
         if(response.getError() != null) {
             MCLauncherAPI.log.fine("Login response error. JSON STRING: '".concat(jsonString).concat("'"));
-			throw new YDServiceAuthenticationException("Authentication Failed: " + response.getMessage(),
+			throw new YDServiceAuthenticationException("Authentication Failed: " + response.getMessage(), response.getMessage(),
 					new LoginException("Error ".concat(response.getError()).concat(" : ").concat(response.getMessage())));
 		
         }
