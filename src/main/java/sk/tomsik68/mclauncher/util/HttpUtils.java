@@ -159,15 +159,15 @@ public final class HttpUtils {
          * attempting to get the InputStream will throw an IOException without knowing what caused this
          */
         
-        int response = connection.getResponseCode();
+        /*int response = connection.getResponseCode();
         if(response == 403) {
         	throw new YDServiceAuthenticationException("Failed to log in, Invalid Username / Password.");
         }
-        
+
         // 400 Response = Invalid Request
         if(response == 400) {
         	throw new YDServiceAuthenticationException("Failed to authenticate, Bad Authentication Request.");
-        }
+        }*/
         
         // Now we can read from the connection input stream
         BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
