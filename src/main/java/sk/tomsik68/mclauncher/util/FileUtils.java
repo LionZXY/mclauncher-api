@@ -53,7 +53,7 @@ public final class FileUtils {
         int readBytes = 0;
         byte[] block;
 
-        while (readBytes < len) {
+        while (readBytes < len && !Thread.interrupted()) {
             block = new byte[8192];
             int readNow = in.read(block);
             if (readNow > 0)
@@ -65,6 +65,9 @@ public final class FileUtils {
         out.flush();
         out.close();
         in.close();
+        if (Thread.interrupted()) {
+            throw new InterruptedException();
+        }
     }
 
     public static void copyFile(File from, File to) throws Exception {
