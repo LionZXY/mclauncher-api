@@ -12,15 +12,15 @@ import java.security.MessageDigest;
 public final class FileUtils {
     public static void createFileSafely(File file) throws Exception {
         File parentFile = new File(file.getParent());
-        if(!parentFile.exists()){
-            if(!parentFile.mkdirs()){
-                throw new IOException("Unable to create parent file: "+file.getParent());
+        if (!parentFile.exists()) {
+            if (!parentFile.mkdirs()) {
+                throw new IOException("Unable to create parent file: " + file.getParent());
             }
         }
-        if(file.exists())
-            if(!file.delete())
+        if (file.exists())
+            if (!file.delete())
                 throw new IOException("Couldn't delete '".concat(file.getAbsolutePath()).concat("'"));
-        if(!file.createNewFile())
+        if (!file.createNewFile())
             throw new IOException("Couldn't create '".concat(file.getAbsolutePath()).concat("'"));
     }
 
@@ -32,13 +32,13 @@ public final class FileUtils {
         }
 
         URL u = new URL(url);
-        HttpURLConnection connection = (HttpURLConnection)u.openConnection();
+        HttpURLConnection connection = (HttpURLConnection) u.openConnection();
         if (md5 != null)
             connection.setRequestProperty("If-None-Match", md5);
         connection.connect();
 
         // local copy is up-to-date
-        if(connection.getResponseCode() == 304){
+        if (connection.getResponseCode() == 304) {
             return;
         }
         createFileSafely(dest);
@@ -51,15 +51,16 @@ public final class FileUtils {
             progress.setMax(len);
 
         int readBytes = 0;
-        byte[] block;
+        byte[] block = new byte[524_288]; // 524 KB
 
         while (readBytes < len && !Thread.interrupted()) {
-            block = new byte[8192];
             int readNow = in.read(block);
-            if (readNow > 0)
+            if (readNow > 0) {
                 out.write(block, 0, readNow);
-            if (progress != null)
+            }
+            if (progress != null) {
                 progress.setProgress(readBytes);
+            }
             readBytes += readNow;
         }
         out.flush();
