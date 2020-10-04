@@ -4,21 +4,64 @@ import net.minidev.json.JSONObject;
 import sk.tomsik68.mclauncher.api.common.IOperatingSystem;
 import sk.tomsik68.mclauncher.impl.common.Platform;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 final class Rule {
     private final Action action;
-    private IOperatingSystem restrictedOs;
-    private String restrictedOsVersionPattern;
+    private final IOperatingSystem restrictedOs;
+    private final String restrictedOsVersionPattern;
+    private final String architecture;
+    private final Map<String, Boolean> features;
 
-    public Rule(JSONObject json) {
+    private Rule(Action action, IOperatingSystem restrictedOs, String restrictedOsVersionPattern, String architecture, Map<String, Boolean> features) {
+        this.action = action;
+        this.restrictedOs = restrictedOs;
+        this.restrictedOsVersionPattern = restrictedOsVersionPattern;
+        this.architecture = architecture;
+        this.features = Collections.unmodifiableMap(features);
+    }
+
+    static Rule fromJson(JSONObject json) {
+        Action action;
+        IOperatingSystem restrictedOs;
+        String restrictedOsVersionPattern;
+        String architecture;
+        Map<String, Boolean> features;
         action = Action.valueOf(json.get("action").toString().toUpperCase());
         if (json.containsKey("os")) {
             JSONObject os = (JSONObject) json.get("os");
-            restrictedOs = Platform.osByName(os.get("name").toString());
-            if (json.containsKey("version"))
+            if (os.containsKey("name"))
+                restrictedOs = Platform.osByName(os.get("name").toString());
+            else
+                restrictedOs = null;
+            if (os.containsKey("arch"))
+                architecture = os.get("arch").toString().toUpperCase();
+            else
+                architecture = null;
+            if (os.containsKey("version"))
                 restrictedOsVersionPattern = os.get("version").toString();
+            else
+                restrictedOsVersionPattern = null;
+        } else {
+            restrictedOs = null;
+            restrictedOsVersionPattern = null;
+            architecture = null;
         }
+        if (json.containsKey("features")) {
+            JSONObject featuresMap = (JSONObject) json.get("features");
+            Map<String, Boolean> f = new HashMap<>();
+            for (Map.Entry<String, Object> entry : featuresMap.entrySet()) {
+                f.put(entry.getKey(), Boolean.valueOf(entry.getValue().toString()));
+            }
+            features = Collections.unmodifiableMap(f);
+        } else {
+            features = Collections.emptyMap();
+        }
+
+        return new Rule(action,restrictedOs,restrictedOsVersionPattern, architecture,features);
     }
 
     public Action getAction() {
@@ -31,6 +74,10 @@ final class Rule {
 
     public String getRestrictedOsVersionPattern() {
         return restrictedOsVersionPattern;
+    }
+
+    public Map<String, Boolean> getFeatures() {
+        return features;
     }
 
     @Override
@@ -49,10 +96,18 @@ final class Rule {
      *
      * @return True if this rule is effective, false otherwise
      */
-    public boolean applies() {
+    public boolean applies(IFeaturePredicate pred) {
+        // determine if features are satisfied
+        boolean satisfied = true;
+        for (Map.Entry<String, Boolean> feature : features.entrySet()) {
+            satisfied &= pred.isFeatureSatisfied(feature.getKey(), feature.getValue());
+        }
+        if (!satisfied)
+            return false;
+
         // if there's no OS specified, it applies to all OSs
         if (getRestrictedOs() == null) {
-            return true;
+            return architecture == null || System.getProperty("os.arch").equalsIgnoreCase(architecture);
         } else {
             // if our OS is the restricted OS
             if (getRestrictedOs() == Platform.getCurrentPlatform()) {

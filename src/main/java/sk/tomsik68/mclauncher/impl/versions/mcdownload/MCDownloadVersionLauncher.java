@@ -11,6 +11,7 @@ import sk.tomsik68.mclauncher.api.mods.IModdingProfile;
 import sk.tomsik68.mclauncher.api.servers.ServerInfo;
 import sk.tomsik68.mclauncher.api.versions.IVersion;
 import sk.tomsik68.mclauncher.api.versions.IVersionLauncher;
+import sk.tomsik68.mclauncher.impl.common.Platform;
 import sk.tomsik68.mclauncher.util.StringSubstitutor;
 import sk.tomsik68.mclauncher.api.login.ISession.Prop;
 
@@ -18,15 +19,15 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 final class MCDownloadVersionLauncher implements IVersionLauncher {
 
-    private String[] getMinecraftArguments(MinecraftInstance mc, File assetsDir,
+    private List<String> getArguments(ArgumentList args, MinecraftInstance mc, File assetsDir,
                                           ISession session, ILaunchSettings settings,
                                           MCDownloadVersion version) {
         // TODO tooo lazy to finish options
-        String args = version.getMinecraftArgs();
         StringSubstitutor subst = new StringSubstitutor("${%s}");
         subst.setVariable("auth_session", session.getSessionID());
         subst.setVariable("auth_access_token", session.getSessionID());
@@ -53,14 +54,16 @@ final class MCDownloadVersionLauncher implements IVersionLauncher {
         } else
             subst.setVariable("user_properties", "{}");
 
-        String[] splitArgs = args.split(" ");
-
-        if (splitArgs.length > 0) {
-            for (int i = 0; i < splitArgs.length; ++i) {
-                splitArgs[i] = subst.substitute(splitArgs[i]);
+        List<String> result = new ArrayList<>();
+        for (Argument arg : args) {
+            if (arg.applies(Platform.getCurrentPlatform(), System.getProperty("os.version"), FeaturePreds.NONE)) {
+                for (String val : arg.getValue()) {
+                    result.add(subst.substitute(val));
+                }
             }
         }
-        return splitArgs;
+
+        return result;
     }
 
     @Override
@@ -140,9 +143,9 @@ final class MCDownloadVersionLauncher implements IVersionLauncher {
         //// now add library files
         for (Library lib : version.getLibraries()) {
             // each library has to be compatible, installed and allowed by modding profile
-            if (lib.isCompatible() && (!moddingProfileSpecified || mods.isLibraryAllowed(lib.getName()))) {
+            if (lib.getArtifact() != null && lib.isCompatible() && (!moddingProfileSpecified || mods.isLibraryAllowed(lib.getName()))) {
                 if (!libraryProvider.isInstalled(lib)) {
-                    throw new FileNotFoundException("Library file wasn't found");
+                    throw new FileNotFoundException("Library file wasn't found: " + lib.getPath());
                 }
                 MCLauncherAPI.log.finest("Adding ".concat(lib.getName()));
                 librariesString = librariesString.append(libraryProvider.getLibraryFile(lib).getAbsolutePath()).append(
@@ -177,16 +180,17 @@ final class MCDownloadVersionLauncher implements IVersionLauncher {
         }
         command.add(mainClass);
         // create minecraft arguments
-        String[] arguments = getMinecraftArguments(mc, resourcesInstaller.getAssetsDirectory(), session, settings,
+        List<String> arguments = getArguments(version.getGameArgs(), mc, resourcesInstaller.getAssetsDirectory(), session, settings,
                 version);
         // give mods opportunity to change minecraft arguments
         if(moddingProfileSpecified){
-            String[] args = mods.changeMinecraftArguments(arguments);
+            List<String> args = mods.changeMinecraftArguments(arguments);
             if(args != null) {
                 arguments = args;
                 MCLauncherAPI.log.fine("Replacing minecraft arguments");
             }
         }
+
         // now append all minecraft arguments to the command
         for (String arg : arguments) {
             command.add(arg);
@@ -204,6 +208,7 @@ final class MCDownloadVersionLauncher implements IVersionLauncher {
             MCLauncherAPI.log.fine("Adding last parameters after the entire command");
         }
         MCLauncherAPI.log.fine("Launching command is now ready.");
+        MCLauncherAPI.log.fine(command.toString());
         return command;
     }
 }

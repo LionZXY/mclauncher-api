@@ -3,29 +3,44 @@ package sk.tomsik68.mclauncher.impl.versions.mcdownload;
 import net.minidev.json.JSONArray;
 import net.minidev.json.JSONObject;
 import sk.tomsik68.mclauncher.api.common.IOperatingSystem;
-import sk.tomsik68.mclauncher.api.common.MCLauncherAPI;
 import sk.tomsik68.mclauncher.impl.common.Platform;
-import sk.tomsik68.mclauncher.impl.versions.mcdownload.Rule.Action;
 import sk.tomsik68.mclauncher.util.IExtractRules;
 import sk.tomsik68.mclauncher.util.StringSubstitutor;
 
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Represents a library that is needed to run minecraft.
  */
 final class Library {
+    public static final String DEFAULT_LIBS_URL = "https://libraries.minecraft.net/";
     private final StringSubstitutor libraryPathSubstitutor = new StringSubstitutor("${%s}");
     private final String name;
-    private final HashMap<String, String> natives = new HashMap<String, String>();
-    private final ArrayList<Rule> rules = new ArrayList<Rule>();
-    private LibraryExtractRules extractRules;
-    private final static String LIBRARY_BASE_URL = "https://libraries.minecraft.net/";
-    private String url = LIBRARY_BASE_URL;
+    private final Map<String, String> natives;
+    private final RuleList rules;
+    private final IExtractRules extractRules;
+    private final Artifact artifact;
+    private final Map<String, Artifact> classifiers;
 
-    public Library(JSONObject json) {
-        name = json.get("name").toString();
+    private Library(String name, Map<String, String> natives, RuleList rules, IExtractRules extractRules, Artifact artifact, Map<String, Artifact> classifiers) {
+        this.name = name;
+        this.natives = Collections.unmodifiableMap(natives);
+        this.rules = rules;
+        this.extractRules = extractRules;
+        this.artifact = artifact;
+        this.classifiers = Collections.unmodifiableMap(classifiers);
+    }
+
+    static Library fromJson(JSONObject json) {
+        String name = json.get("name").toString();
+        Map<String, String> natives = new HashMap<>();
+        Map<String, Artifact> classifiers = new HashMap<>();
+        RuleList rules;
+        Artifact artifact = null;
+        IExtractRules extractRules;
+
         if (json.containsKey("natives")) {
             JSONObject nativesObj = (JSONObject) json.get("natives");
             for (String nativeKey : nativesObj.keySet()) {
@@ -35,18 +50,38 @@ final class Library {
                 natives.put(key, value);
             }
         }
-        if (json.containsKey("rules")) {
-            JSONArray rulz = (JSONArray) json.get("rules");
-            for (int i = 0; i < rulz.size(); ++i) {
-                rules.add(new Rule((JSONObject) rulz.get(i)));
+        rules = RuleList.fromJson((JSONArray) json.get("rules"));
+        if (json.containsKey("extract")) {
+            extractRules = LibraryExtractRules.fromJson((JSONObject) json.get("extract"));
+        } else {
+            extractRules = null;
+        }
+
+        JSONObject downloads = (JSONObject) json.get("downloads");
+        if (downloads != null && downloads.containsKey("artifact")) {
+            artifact = Artifact.fromJson((JSONObject) downloads.get("artifact"));
+        } else {
+            String rootUrl = DEFAULT_LIBS_URL;
+            if (json.containsKey("url")) {
+                rootUrl = json.get("url").toString();
+            }
+
+            if(downloads == null) {
+                String url = rootUrl + nameToPath(name) + ".jar";
+                artifact = Artifact.fromUrl(url);
             }
         }
-        if (json.containsKey("extract")) {
-            extractRules = new LibraryExtractRules((JSONObject) json.get("extract"));
+
+
+        if (downloads != null && downloads.containsKey("classifiers")) {
+            JSONObject cls = (JSONObject) downloads.get("classifiers");
+            assert cls != null;
+            for (Map.Entry<String, Object> entry : cls.entrySet()) {
+                classifiers.put(entry.getKey(), Artifact.fromJson((JSONObject)entry.getValue()));
+            }
         }
-        if (json.containsKey("url")) {
-            url = json.get("url").toString();
-        }
+
+        return new Library(name, natives, rules, extractRules, artifact, classifiers);
     }
 
     public String getName() {
@@ -58,10 +93,24 @@ final class Library {
      * @param os - IOperatingSystem to check
      * @return Name of library which holds natives for given OS
      */
-    public String getNatives(IOperatingSystem os) {
-        if (!natives.containsKey(os.getMinecraftName()))
-            return natives.get(Platform.wrapName(os.getMinecraftName())).replace("${arch}", System.getProperty("sun.arch.data.model"));
-        return natives.get(os.getMinecraftName()).replace("${arch}", os.getArchitecture());
+    public Artifact getNatives(IOperatingSystem os) {
+        String k = null;
+        if (natives.containsKey(os.getMinecraftName()))
+            k = natives.get(os.getMinecraftName()).replace("${arch}", os.getArchitecture());
+        else
+            k = natives.get(Platform.wrapName(os.getMinecraftName())).replace("${arch}", os.getArchitecture());
+        return classifiers.get(k);
+    }
+
+    private static String nameToPath(String name) {
+        StringBuilder result = new StringBuilder();
+        String[] split = name.split(":");
+
+        result = result.append(split[0].replace('.', '/'));// net/sf/jopt-simple
+        result = result.append('/').append(split[1]).append('/').append(split[2]).append('/'); // /jopt-simple/4.4/
+        result = result.append(split[1]).append('-').append(split[2]); // jopt-simple-4.4
+
+        return result.toString();
     }
 
     /**
@@ -71,12 +120,9 @@ final class Library {
      */
     public String getPath() {
         libraryPathSubstitutor.setVariable("arch", Platform.getCurrentPlatform().getArchitecture());
-        String[] split = name.split(":");
-        StringBuilder result = new StringBuilder();
 
-        result = result.append(split[0].replace('.', '/'));// net/sf/jopt-simple
-        result = result.append('/').append(split[1]).append('/').append(split[2]).append('/'); // /jopt-simple/4.4/
-        result = result.append(split[1]).append('-').append(split[2]); // jopt-simple-4.4
+        StringBuilder result = new StringBuilder(nameToPath(name));
+
         if (!natives.isEmpty()) {
             IOperatingSystem os = Platform.getCurrentPlatform();
             String osName = os.getMinecraftName();
@@ -95,19 +141,11 @@ final class Library {
      * @return True if this library is compatible with the current operating system
      */
     boolean isCompatible() {
-        Action action = Action.DISALLOW;
-        for (Rule rule : rules) {
-            // rule may only change resulting action if it's effective...
-            if (rule.applies()) {
-                action = rule.getAction();
-                System.out.println("Rule: " + rule.toString());
-            }
-        }
         // the following condition is very important and can brackets can be ignored while reading(they're just to increase readability)
         // library is compatible if:
         //    (there are no rules) OR ((action is allow) AND (there are EITHER ((no natives) OR (natives for this platform are available))))
-        return rules.isEmpty()
-                || (action == Action.ALLOW && (!hasNatives() || natives.containsKey(Platform.getCurrentPlatform().getMinecraftName()) || natives.containsKey(Platform.wrapName(Platform.getCurrentPlatform().getMinecraftName())) ));
+        return rules.allows(Platform.getCurrentPlatform(), System.getProperty("os.version"), FeaturePreds.ALL)
+                && (!hasNatives() || natives.containsKey(Platform.getCurrentPlatform().getMinecraftName()) || natives.containsKey(Platform.wrapName(Platform.getCurrentPlatform().getMinecraftName())) );
     }
 
     /**
@@ -126,11 +164,7 @@ final class Library {
         return extractRules;
     }
 
-    /**
-     *
-     * @return String which contains URL where this library can be downloaded
-     */
-    public String getDownloadURL() {
-        return url.concat(getPath());
+    public Artifact getArtifact() {
+        return artifact;
     }
 }

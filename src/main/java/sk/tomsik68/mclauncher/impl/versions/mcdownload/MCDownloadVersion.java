@@ -7,7 +7,7 @@ import sk.tomsik68.mclauncher.api.json.IJSONSerializable;
 import sk.tomsik68.mclauncher.api.versions.IVersion;
 import sk.tomsik68.mclauncher.api.versions.IVersionInstaller;
 import sk.tomsik68.mclauncher.api.versions.IVersionLauncher;
-import sk.tomsik68.mclauncher.impl.versions.mcdownload.Rule.Action;
+import sk.tomsik68.mclauncher.impl.common.Platform;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,57 +16,115 @@ final class MCDownloadVersion implements IVersion, IJSONSerializable {
     private static final MCDownloadVersionInstaller installer = new MCDownloadVersionInstaller();
     private static final IVersionLauncher launcher = new MCDownloadVersionLauncher();
     private static final String DEFAULT_ASSETS_INDEX = "legacy";
+    private ArgumentList jvmArgs;
+    private ArgumentList gameArgs;
 
-    private String id, time, releaseTime, type, minecraftArgs, mainClass, jarVersion;
-    private int minimumLauncherVersion;
+    private String id, time, releaseTime, type, mainClass, jarVersion;
+    private Artifact client, server;
+    private Artifact assetIndex;
+    private String assetsIndexName;
+    private Integer minimumLauncherVersion;
     private final JSONObject json;
-    private String incompatibilityReason, processArgs, assets, inheritsFrom;
-    private ArrayList<Rule> rules = new ArrayList<Rule>();
-    private ArrayList<Library> libraries = new ArrayList<Library>();
+    private String incompatibilityReason, inheritsFrom;
+    private RuleList rules;
+    private List<Library> libraries;
 
     private boolean needsInheritance;
 
-    MCDownloadVersion(JSONObject json) {
-        this.json = json;
-        id = json.get("id").toString();
+    private MCDownloadVersion(Builder builder) {
+        this.jvmArgs = builder.jvmArgs;
+        this.gameArgs = builder.gameArgs;
+        this.id = builder.id;
+        this.time = builder.time;
+        this.releaseTime = builder.releaseTime;
+        this.type = builder.type;
+        this.mainClass = builder.mainClass;
+        this.jarVersion = builder.jarVersion;
+        this.client = builder.client;
+        this.server = builder.server;
+        this.assetIndex = builder.assetIndex;
+        this.assetsIndexName = builder.assetsIndexName;
+        this.minimumLauncherVersion = builder.minimumLauncherVersion;
+        this.json = builder.json;
+        this.incompatibilityReason = builder.incompatibilityReason;
+        this.inheritsFrom = builder.inheritsFrom;
+        this.rules = builder.rules;
+        this.libraries = builder.libraries;
+        this.needsInheritance = builder.needsInheritance;
+
+    }
+
+    static MCDownloadVersion fromJson(JSONObject json) {
+        Builder builder = new Builder();
+        builder.id = json.get("id").toString();
+        builder.json = json;
         if(json.containsKey("jar")) {
-            jarVersion = json.get("jar").toString();
+            builder.jarVersion = json.get("jar").toString();
         } else {
-            jarVersion = id;
+            builder.jarVersion = builder.id;
         }
-        time = json.get("time").toString();
-        releaseTime = json.get("releaseTime").toString();
-        type = json.get("type").toString();
-        if (json.containsKey("processArguments"))
-            processArgs = json.get("processArguments").toString();
-        minecraftArgs = json.get("minecraftArguments").toString();
+        builder.time = json.get("time").toString();
+        builder.releaseTime = json.get("releaseTime").toString();
+        builder.type = json.get("type").toString();
+        if (json.containsKey("assets")) {
+            builder.assetsIndexName = json.get("assets").toString();
+        }
+
+        if (json.containsKey("processArguments")) {
+            builder.jvmArgs = ArgumentList.fromString(json.get("processArguments").toString());
+        } else if(json.containsKey("arguments")) {
+            JSONObject arguments = (JSONObject) json.get("arguments");
+            JSONArray jvm = (JSONArray) arguments.get("jvm");
+            builder.jvmArgs = ArgumentList.fromArray(jvm);
+        } else {
+            builder.jvmArgs = ArgumentList.empty();
+        }
+
+        if (json.containsKey("minecraftArguments")) {
+            builder.gameArgs = ArgumentList.fromString(json.get("minecraftArguments").toString());
+        } else if(json.containsKey("arguments")) {
+            JSONObject arguments = (JSONObject) json.get("arguments");
+
+            JSONArray game = (JSONArray) arguments.get("game");
+
+            builder.gameArgs = ArgumentList.fromArray(game);
+        } else {
+            builder.gameArgs = ArgumentList.empty();
+        }
+
         if (json.containsKey("minimumLauncherVersion"))
-            minimumLauncherVersion = Integer.parseInt(json.get("minimumLauncherVersion").toString());
-        mainClass = json.get("mainClass").toString();
-        if (json.containsKey("assets"))
-            assets = json.get("assets").toString();
-        else
-            assets = DEFAULT_ASSETS_INDEX;
-        if (json.containsKey("rules")) {
-            JSONArray rulesArray = (JSONArray) json.get("rules");
-            for (Object o : rulesArray) {
-                JSONObject jsonRule = (JSONObject) o;
-                rules.add(new Rule(jsonRule));
-            }
+            builder.minimumLauncherVersion = Integer.parseInt(json.get("minimumLauncherVersion").toString());
+        builder.mainClass = json.get("mainClass").toString();
+        if (json.containsKey("assetIndex")) {
+            builder.assetIndex = Artifact.fromJson((JSONObject) json.get("assetIndex"));
         }
+        builder.rules = RuleList.fromJson((JSONArray) json.get("rules"));
+
         if (json.containsKey("libraries")) {
             JSONArray libs = (JSONArray) json.get("libraries");
             for (int i = 0; i < libs.size(); ++i) {
-                libraries.add(new Library((JSONObject) libs.get(i)));
+                builder.libraries.add(Library.fromJson((JSONObject) libs.get(i)));
             }
         }
+
+        if (json.containsKey("downloads")) {
+            JSONObject downloads = (JSONObject) json.get("downloads");
+            if (downloads.containsKey("client"))
+                builder.client = Artifact.fromJson((JSONObject) downloads.get("client"));
+            // old_alpha versions do not provide server binaries
+            if (downloads.containsKey("server"))
+                builder.server = Artifact.fromJson((JSONObject) downloads.get("server"));
+        }
+
         if (json.containsKey("incompatibilityReason"))
-            incompatibilityReason = json.get("incompatibilityReason").toString();
+            builder.incompatibilityReason = json.get("incompatibilityReason").toString();
         if (json.containsKey("inheritsFrom")) {
-            inheritsFrom = json.get("inheritsFrom").toString();
-            needsInheritance = true;
+            builder.inheritsFrom = json.get("inheritsFrom").toString();
+            builder.needsInheritance = true;
         } else
-            needsInheritance = false;
+            builder.needsInheritance = false;
+
+        return new MCDownloadVersion(builder);
     }
 
     @Override
@@ -101,12 +159,12 @@ final class MCDownloadVersion implements IVersion, IJSONSerializable {
         return type;
     }
 
-    String getProcessArgs() {
-        return processArgs;
+    ArgumentList getGameArgs() {
+        return gameArgs;
     }
 
-    String getMinecraftArgs() {
-        return minecraftArgs;
+    ArgumentList getJvmArgs() {
+        return jvmArgs;
     }
 
     int getMinimumLauncherVersion() {
@@ -143,21 +201,12 @@ final class MCDownloadVersion implements IVersion, IJSONSerializable {
      * @return True if this version is compatible with our current operating system
      */
     public boolean isCompatible() {
-        Action action = null;
-        for (Rule rule : rules) {
-            if (rule.applies())
-                action = rule.getAction();
-        }
-        return rules.isEmpty() || action == Action.ALLOW;
+        return rules.allows(Platform.getCurrentPlatform(), System.getProperty("os.version"), FeaturePreds.ALL);
     }
 
     @Override
     public JSONObject toJSON() {
         return json;
-    }
-
-    String getAssetsIndexName() {
-        return assets;
     }
 
     boolean needsInheritance(){ return needsInheritance; }
@@ -172,8 +221,14 @@ final class MCDownloadVersion implements IVersion, IJSONSerializable {
             throw new IllegalArgumentException("Wrong inheritance version passed!");
         }
 
-        if(minecraftArgs == null)
-            minecraftArgs = parent.getMinecraftArgs();
+        if(gameArgs.isEmpty())
+            gameArgs = parent.gameArgs;
+
+        if (jvmArgs.isEmpty())
+            jvmArgs = parent.jvmArgs;
+
+        if(minimumLauncherVersion == null)
+            minimumLauncherVersion = parent.getMinimumLauncherVersion();
 
         if(mainClass == null)
             mainClass = parent.getMainClass();
@@ -181,21 +236,53 @@ final class MCDownloadVersion implements IVersion, IJSONSerializable {
         if(incompatibilityReason == null)
             incompatibilityReason = parent.getIncompatibilityReason();
 
-        if(assets == null)
-            assets = parent.getAssetsIndexName();
+        if (assetsIndexName == null)
+            assetsIndexName = parent.getAssetsIndexName();
+
+        if(assetIndex == null)
+            assetIndex = parent.getAssetIndex();
 
         libraries.addAll(parent.getLibraries());
-        rules.addAll(parent.rules);
-
 
         if(jarVersion == null || jarVersion.isEmpty()){
             jarVersion = parent.getJarVersion();
         }
 
-        if(rules.isEmpty())
-            rules.addAll(parent.rules);
+        rules = rules.and(parent.rules);
 
         needsInheritance = false;
         MCLauncherAPI.log.finer("Inheriting version ".concat(id).concat(" finished."));
     }
+
+    Artifact getAssetIndex() {
+        return assetIndex;
+    }
+
+    public Artifact getClient() {
+        return client;
+    }
+
+    public Artifact getServer() {
+        return server;
+    }
+
+    public String getAssetsIndexName() {
+        return assetsIndexName;
+    }
+
+    private static class Builder {
+        ArgumentList jvmArgs;
+        ArgumentList gameArgs;
+        String id, time, releaseTime, type, mainClass, jarVersion;
+        Artifact client = null, server = null;
+        Artifact assetIndex;
+        JSONObject json;
+        String assetsIndexName;
+        Integer minimumLauncherVersion = null;
+        String incompatibilityReason = "", inheritsFrom = null;
+        RuleList rules;
+        List<Library> libraries = new ArrayList<Library>();
+        boolean needsInheritance;
+    }
+
 }
