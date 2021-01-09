@@ -15,19 +15,19 @@ class YDResponse {
             setMessage(json.get("errorMessage").toString());
     }
 
-    final String getError() {
+    public final String getError() {
         return error;
     }
 
-    final void setError(String error) {
+    public final void setError(String error) {
         this.error = error;
     }
 
-    final String getMessage() {
+    public final String getMessage() {
         return message;
     }
 
-    final void setMessage(String message) {
+    public final void setMessage(String message) {
         this.message = message;
     }
 }
