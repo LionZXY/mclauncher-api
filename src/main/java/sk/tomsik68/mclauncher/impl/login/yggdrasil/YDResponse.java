@@ -5,7 +5,7 @@ import net.minidev.json.JSONObject;
 /**
  * Any response we can get from YggDrassil login system
  */
-class YDResponse {
+public class YDResponse {
     private String error, message;
 
     public YDResponse(JSONObject json) {
