@@ -74,7 +74,10 @@ final class MCDownloadVersion implements IVersion, IJSONSerializable {
             builder.jvmArgs = ArgumentList.fromString(json.get("processArguments").toString());
         } else if(json.containsKey("arguments")) {
             JSONObject arguments = (JSONObject) json.get("arguments");
-            JSONArray jvm = (JSONArray) arguments.get("jvm");
+            JSONArray jvm = new JSONArray();
+            if (arguments.containsKey("jvm")) {
+                jvm = (JSONArray) arguments.get("jvm");
+            }
             builder.jvmArgs = ArgumentList.fromArray(jvm);
         } else {
             builder.jvmArgs = ArgumentList.empty();
