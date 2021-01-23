@@ -9,6 +9,7 @@ import java.util.UUID;
 import net.minidev.json.JSONObject;
 import net.minidev.json.JSONStyle;
 import net.minidev.json.JSONValue;
+import org.jetbrains.annotations.NotNull;
 import sk.tomsik68.mclauncher.api.common.MCLauncherAPI;
 import sk.tomsik68.mclauncher.api.json.IJSONSerializable;
 import sk.tomsik68.mclauncher.api.login.ILoginService;
@@ -22,11 +23,52 @@ import sk.tomsik68.mclauncher.util.HttpUtils;
 
 public final class YDLoginService implements ILoginService {
     public static UUID clientToken = UUID.randomUUID();
-    private static final String PASSWORD_LOGIN_URL = "https://games.glitchless.ru/api/minecraft/users/authenticate";
-    private static final String SESSION_LOGIN_URL = "https://games.glitchless.ru/api/minecraft/users/refresh";
-    private static final String SESSION_LOGOUT_URL = "https://games.glitchless.ru/api/minecraft/users/invalidate";
+    private final String passwordLoginUrl;
+    private final String sessionLoginUrl;
+    private final String sessionLogoutUrl;
 
+    /**
+     * Keep for back-capability
+     * Will be removed in the future!
+     *
+     * @deprecated use #mojang() static method please
+     */
+    @Deprecated
     public YDLoginService() {
+        this("https://authserver.mojang.com/");
+    }
+
+    /**
+     * Create instance YDLoginService with default Mojang auth server
+     *
+     * @return YDLoginService new instance
+     */
+    public static YDLoginService mojang() {
+        return new YDLoginService("https://authserver.mojang.com/");
+    }
+
+    /**
+     * Create instance YDLoginService with default Mojang auth server
+     * baseUrl + authenticate
+     * baseUrl + refresh
+     * baseUrl + invalidate
+     *
+     * @see YDLoginService#mojang() also
+     * @param baseUrl start url for auth path
+     * @return YDLoginService new instance
+     */
+    public static YDLoginService custom(@NotNull String baseUrl) {
+        return new YDLoginService(baseUrl);
+    }
+
+    /**
+     * Constructor for debug/custom auth url.
+     * If argument is null, use default value
+     */
+    private YDLoginService(@NotNull String baseUrl) {
+        passwordLoginUrl = baseUrl + "authenticate";
+        sessionLoginUrl = baseUrl + "refresh";
+        sessionLogoutUrl = baseUrl + "invalidate";
     }
 
     @Override
@@ -38,12 +80,12 @@ public final class YDLoginService implements ILoginService {
         }
         else if(profile instanceof YDAuthProfile) {
             response = doSessionLogin(profile);
-        
+
         } else {
             throw new IllegalArgumentException("YDLoginService can't deal with custom profile class: " + profile.getClass().getName());
-        
+
         }
-        
+
         MCLauncherAPI.log.fine("Login successful. Updating profile...");
         YDSession result = new YDSession(response);
         if(profile instanceof YDAuthProfile)
@@ -60,11 +102,9 @@ public final class YDLoginService implements ILoginService {
 
     private String doLoginPost(String url, IJSONSerializable request) throws YDServiceAuthenticationException {
         String response = null;
-        MCLauncherAPI.log.info(">>>>>>>>>>>>>" + url + "\n" + request.toJSON().toJSONString());
         try {
             // Automatically Throws YDServiceAuthenticationException but will check for IOException and convert
             response = HttpUtils.doJSONAuthenticationPost(url, request);
-            MCLauncherAPI.log.info("<<<<<<<<<<<" + response);
             return response;
         } catch (IOException e) {
             throw new YDServiceAuthenticationException("Failed to authenticate using Mojang authentication service.", e);
@@ -77,12 +117,12 @@ public final class YDLoginService implements ILoginService {
 
 		JSONObject jsonObject = (JSONObject)JSONValue.parse(jsonString);
         YDLoginResponse response = new YDLoginResponse(jsonObject);
-        
+
         if(response.getError() != null) {
             MCLauncherAPI.log.fine("Login response error. JSON STRING: '".concat(jsonString).concat("'"));
-			throw new YDServiceAuthenticationException("Authentication Failed: " + response.getMessage(), response.getMessage(),
-					new LoginException("Error ".concat(response.getError()).concat(" : ").concat(response.getMessage())));
-		
+			throw new YDServiceAuthenticationException("Authentication Failed: " + response.getMessage(),
+					new LoginException("Error ".concat(response.getError()).concat(" : ").concat(response.getMessage())),
+                    response);
         }
         return response;
     }
@@ -91,7 +131,7 @@ public final class YDLoginService implements ILoginService {
         MCLauncherAPI.log.fine("Using session ID login");
         YDSessionLoginRequest request = new YDSessionLoginRequest(profile.getPassword(), clientToken.toString());
 
-        YDLoginResponse response = doCheckedLoginPost(SESSION_LOGIN_URL, request);
+        YDLoginResponse response = doCheckedLoginPost(sessionLoginUrl, request);
 
         return response;
     }
@@ -100,7 +140,7 @@ public final class YDLoginService implements ILoginService {
         MCLauncherAPI.log.fine("Using password-based login");
         YDPasswordLoginRequest request = new YDPasswordLoginRequest(profile.getName(), profile.getPassword(), clientToken.toString());
 
-        YDLoginResponse response = doCheckedLoginPost(PASSWORD_LOGIN_URL, request);
+        YDLoginResponse response = doCheckedLoginPost(passwordLoginUrl, request);
 
         return response;
     }
@@ -152,7 +192,7 @@ public final class YDLoginService implements ILoginService {
     @Override
     public void logout(ISession session) throws Exception {
         YDLogoutRequest request = new YDLogoutRequest(session, clientToken);
-        String response = doLoginPost(SESSION_LOGOUT_URL, request);
+        String response = doLoginPost(sessionLogoutUrl, request);
         if("".equals(response)) {
             MCLauncherAPI.log.fine("Logout successful.");
         } else {

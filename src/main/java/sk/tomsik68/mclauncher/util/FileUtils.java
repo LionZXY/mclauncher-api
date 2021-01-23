@@ -53,9 +53,9 @@ public final class FileUtils {
         progress.setMax(len);
 
         int readBytes = 0;
-        byte[] block = new byte[524_288]; // 524 KB
+        byte[] block = new byte[8192];
 
-        while (readBytes < len && !Thread.interrupted()) {
+        while (readBytes < len) {
             int readNow = in.read(block);
             if (readNow > 0) {
                 out.write(block, 0, readNow);
@@ -64,6 +64,9 @@ public final class FileUtils {
                 progress.setProgress(readBytes);
             }
             readBytes += readNow;
+            if (Thread.interrupted()) {
+                throw new InterruptedException();
+            }
         }
         out.flush();
         out.close();
@@ -77,9 +80,8 @@ public final class FileUtils {
         createFileSafely(to);
         BufferedInputStream bis = new BufferedInputStream(new FileInputStream(from));
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(to));
-        byte[] block;
+        byte[] block = new byte[8192];
         while (bis.available() > 0) {
-            block = new byte[8192];
             final int readNow = bis.read(block);
             bos.write(block, 0, readNow);
         }
